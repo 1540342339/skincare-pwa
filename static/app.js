@@ -99,8 +99,10 @@ async function doFetch(url, body, renderFn) {
 }
 
 function renderSingleCards(analysis, cached, cacheDate, sources) {
-    if (analysis.raw) {
-        return `<div class="card"><div class="card-body">${analysis.raw.replace(/\n/g, '<br>')}</div></div>`;
+    // 极端降级：完全无结构化字段且带有 _raw_fallback
+    if (!analysis.summary && !analysis.suitable_for && analysis._raw_fallback) {
+        let text = analysis._raw_fallback.replace(/\n/g, '<br>');
+        return `<div class="card"><div class="card-header">📋 完整分析（文本模式）</div><div class="card-body">${text}</div></div>`;
     }
 
     let html = '';
@@ -170,6 +172,19 @@ function renderSingleCards(analysis, cached, cacheDate, sources) {
 
     if (analysis.source_url) {
         html += card('🔗 成分来源', `<a href="${analysis.source_url}" target="_blank">${analysis.source_url}</a>`);
+    }
+
+    // 降级时保留完整文本，折叠显示
+    if (analysis._raw_fallback) {
+        html += `
+        <div class="card">
+            <div class="card-header" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                📄 查看完整分析文本 ▼
+            </div>
+            <div class="card-body hidden" style="max-height: 300px; overflow-y: auto; font-size: 13px;">
+                ${analysis._raw_fallback.replace(/\n/g, '<br>')}
+            </div>
+        </div>`;
     }
 
     return html;
