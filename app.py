@@ -5,7 +5,7 @@ import traceback
 
 
 from flask import Flask, request, jsonify, send_from_directory
-from tools import analyze_skincare
+from tools_pwa import analyze_skincare
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pwa_app")
