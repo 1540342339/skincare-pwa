@@ -64,7 +64,7 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety",
                             sources = getattr(raw, 'results', [])
                     if not sources:
                         try:
-                            from duckduckgo_search import DDGS
+                            from ddgs import DDGS
                             with DDGS() as ddgs:
                                 raw_ddg = list(ddgs.text(sq, max_results=5))
                                 sources = [
