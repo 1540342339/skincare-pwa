@@ -13,7 +13,6 @@ header { text-align: center; margin-bottom: 24px; }
 header h1 { font-size: 28px; font-weight: 600; color: #C9956B; margin-bottom: 8px; }
 .subtitle { font-size: 14px; color: #A0887A; }
 
-/* 个性签名 */
 .bio {
     text-align: center;
     font-size: 15px;
@@ -91,7 +90,6 @@ header h1 { font-size: 28px; font-weight: 600; color: #C9956B; margin-bottom: 8p
 
 .hidden { display: none !important; }
 
-/* 缓存状态横幅 */
 .cache-banner {
     border-radius: 12px; padding: 12px 16px; margin-bottom: 12px;
     display: flex; align-items: center; justify-content: space-between;
@@ -106,7 +104,6 @@ header h1 { font-size: 28px; font-weight: 600; color: #C9956B; margin-bottom: 8p
 }
 .refresh-btn:hover { opacity: 0.8; }
 
-/* 信源模块 */
 .sources-card .sources-header {
     cursor: pointer; display: flex; justify-content: space-between;
     align-items: center; user-select: none;
@@ -115,63 +112,35 @@ header h1 { font-size: 28px; font-weight: 600; color: #C9956B; margin-bottom: 8p
 .toggle-icon { font-size: 12px; transition: transform 0.2s; }
 
 .source-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 8px 0;
-    border-bottom: 1px solid #F5EDE0;
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid #F5EDE0;
 }
 .source-item:last-child { border-bottom: none; }
-.source-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: #3D322C;
-    text-decoration: none;
-}
+.source-title { font-size: 13px; font-weight: 500; color: #3D322C; text-decoration: none; }
 .source-title:hover { text-decoration: underline; }
-.source-used {
-    font-size: 11px;
-    color: #A0887A;
-    display: block;
-    margin-top: 2px;
-}
+.source-used { font-size: 11px; color: #A0887A; display: block; margin-top: 2px; }
 
-/* 分析师署名 */
 .analyst-tag {
-    text-align: center;
-    font-size: 13px;
-    color: #A0887A;
+    text-align: center; font-size: 13px; color: #A0887A;
     margin-bottom: 6px;
 }
-.analyst-tag a {
-    color: #C9956B;
-    text-decoration: none;
-    font-weight: 500;
-}
+.analyst-tag a { color: #C9956B; text-decoration: none; font-weight: 500; }
 .analyst-tag a:hover { text-decoration: underline; }
 
-/* 免责声明 */
 .disclaimer {
-    text-align: center;
-    font-size: 12px;
-    color: #A0887A;
-    margin-top: 20px;
-    padding: 12px 8px;
-    border-top: 1px solid #E5D5C0;
-    line-height: 1.6;
+    text-align: center; font-size: 12px; color: #A0887A;
+    margin-top: 20px; padding: 12px 8px;
+    border-top: 1px solid #E5D5C0; line-height: 1.6;
 }
 
-/* 成分列表 */
 .ingredient-list { display: flex; flex-direction: column; gap: 6px; }
 .ingredient-item { display: flex; justify-content: space-between; align-items: center; }
 .ing-name { font-weight: 500; color: #3D322C; }
 .ing-effect { font-size: 12px; color: #A0887A; }
 
-/* 使用建议 */
 .tips-list { padding-left: 20px; }
 .tips-list li { margin-bottom: 4px; }
 
-/* 响应式 */
 @media (max-width: 480px) {
     .container { padding: 16px 12px; }
     header h1 { font-size: 24px; }

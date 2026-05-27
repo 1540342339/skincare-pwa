@@ -1,6 +1,6 @@
 const API_BASE = window.location.origin;
-let currentMode = 'single'; // 'single' or 'compare'
-let currentProductName = ''; // 当前查询的产品名，用于刷新
+let currentMode = 'single';
+let currentProductName = '';
 
 function switchMode(mode) {
     currentMode = mode;
@@ -8,7 +8,6 @@ function switchMode(mode) {
     document.getElementById('compareMode').classList.toggle('hidden', mode !== 'compare');
     document.getElementById('tabSingle').classList.toggle('active', mode === 'single');
     document.getElementById('tabCompare').classList.toggle('active', mode === 'compare');
-    // 清空旧结果
     document.getElementById('result').classList.add('hidden');
     document.getElementById('error').classList.add('hidden');
 }
@@ -99,7 +98,6 @@ async function doFetch(url, body, renderFn) {
 }
 
 function renderSingleCards(analysis, cached, cacheDate, sources) {
-    // 极端降级：完全无结构化字段且带有 _raw_fallback
     if (!analysis.summary && !analysis.suitable_for && analysis._raw_fallback) {
         let text = analysis._raw_fallback.replace(/\n/g, '<br>');
         return `<div class="card"><div class="card-header">📋 完整分析（文本模式）</div><div class="card-body">${text}</div></div>`;
@@ -107,7 +105,6 @@ function renderSingleCards(analysis, cached, cacheDate, sources) {
 
     let html = '';
 
-    // 缓存状态提示
     if (cached !== undefined) {
         if (cached && cacheDate) {
             const d = new Date(cacheDate);
@@ -143,7 +140,6 @@ function renderSingleCards(analysis, cached, cacheDate, sources) {
         html += card('⚠️ 风险提示', txt);
     }
 
-    // 信源透明度模块（无评级）
     if (sources && sources.length > 0) {
         html += renderSourcesCard(sources);
     }
@@ -174,7 +170,6 @@ function renderSingleCards(analysis, cached, cacheDate, sources) {
         html += card('🔗 成分来源', `<a href="${analysis.source_url}" target="_blank">${analysis.source_url}</a>`);
     }
 
-    // 降级时保留完整文本，折叠显示
     if (analysis._raw_fallback) {
         html += `
         <div class="card">
@@ -187,13 +182,11 @@ function renderSingleCards(analysis, cached, cacheDate, sources) {
         </div>`;
     }
 
-    // 分析师署名
     html += `
     <div class="analyst-tag">
         🔬 成分分析支持：<a href="https://xhslink.com/m/1dph9IjtAcW" target="_blank">@李大漂亮很灵活</a>
     </div>`;
 
-    // 免责声明
     html += `
     <div class="disclaimer">
         ⚠️ 以上分析基于公开成分数据和配方科学常识，仅供参考，不构成专业医疗建议。具体效果因人而异，建议先做局部测试。
@@ -244,9 +237,7 @@ function renderCompareCards(analysis) {
     }
 
     let html = '';
-
     if (analysis.verdict) html += card('📋 搭配结论', analysis.verdict, true);
-
     html += card(
         analysis.can_use_together ? '✅ 可以一起使用' : '⚠️ 谨慎搭配',
         `综合推荐度：${analysis.overall_rating || '请自行判断'}`
@@ -267,9 +258,7 @@ function renderCompareCards(analysis) {
     }
 
     if (analysis.order) html += card('⏱️ 使用顺序', analysis.order);
-
     if (analysis.caution) html += card('⚠️ 注意事项', analysis.caution);
-
     return html;
 }
 

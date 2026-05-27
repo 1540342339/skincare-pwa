@@ -1,12 +1,11 @@
 {
-  "name": "护肤成分分析助手",
-  "short_name": "护肤助手",
-  "description": "查询护肤品成分安全性，配方排雷",
+  "name": "护肤成分分析",
+  "short_name": "成分分析",
+  "description": "护肤品成分安全分析与搭配检查",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#F5EDE0",
   "theme_color": "#C9956B",
+  "background_color": "#FDF6EE",
   "icons": [
     {
       "src": "/icon-192.png",

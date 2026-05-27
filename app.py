@@ -10,9 +10,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pwa_app")
 
 app = Flask(__name__, static_folder='static', static_url_path='')
+
+# ====== 禁止缓存核心文件 ======
 @app.after_request
 def add_no_cache_headers(response):
-    """对 HTML、JS、CSS 禁止缓存，确保每次加载最新版本"""
     if request.path.endswith('.html') or request.path.endswith('.js') or request.path.endswith('.css') or request.path == '/':
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
@@ -101,7 +102,6 @@ def _set_cache(product_name: str, ingredients: str, analysis_json: dict, sources
             conn.close()
 
 def _search_product(product_name: str):
-    """搜索产品成分信息，返回 (ingredient_text, sources_list)"""
     search_queries = [
         f"{product_name} 全成分表 备案",
         f"{product_name} 成分表",
@@ -148,7 +148,6 @@ def _search_product(product_name: str):
     if not sources:
         return "", []
 
-    # 提取成分文本（优先包含“成分”关键词的片段）
     ingredient_text = ""
     for s in sources:
         content = s.get('content', '') if isinstance(s, dict) else getattr(s, 'content', '')
@@ -162,7 +161,6 @@ def _search_product(product_name: str):
     return ingredient_text, sources
 
 def _extract_sources_from_analysis(raw_text: str, search_sources: list) -> list:
-    """基于搜索到的原始信源构建前端需要的信源列表（无评级）"""
     combined = []
     seen_urls = set()
     for s in search_sources:
@@ -201,7 +199,6 @@ def analyze():
         force_refresh = data.get('force_refresh', False)
         logger.info(f"分析请求: {product_name} (强制刷新: {force_refresh})")
 
-        # 检查缓存
         if not force_refresh:
             cached = _get_cached(product_name)
             if cached:
@@ -214,12 +211,10 @@ def analyze():
                     "sources": cached.get("sources", [])
                 })
 
-        # 实时搜索
         ingredient_text, search_sources = _search_product(product_name)
         if not ingredient_text and not search_sources:
             return jsonify({"error": f"未找到「{product_name}」的成分信息，请尝试其他名称"}), 404
 
-        # 调用分析工具（传入预搜索数据，避免工具内重复搜索）
         raw_result = analyze_skincare.invoke({
             "product_name": product_name,
             "analysis_type": "safety",
@@ -230,7 +225,6 @@ def analyze():
         structured = _structure_result(product_name, raw_result)
         sources_list = _extract_sources_from_analysis(raw_result, search_sources)
 
-        # 写入缓存
         _set_cache(
             product_name,
             ingredients=structured.get("ingredients", ""),
@@ -260,7 +254,6 @@ def refresh():
         product_name = data['product_name']
         logger.info(f"强制刷新: {product_name}")
 
-        # 删除旧缓存
         conn = _get_db_connection()
         if conn:
             try:
