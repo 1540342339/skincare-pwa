@@ -13,6 +13,20 @@
     <title>护肤成分分析</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
+<script>
+// 自动清理旧 Service Worker 并刷新
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+    if (registrations.length > 0) {
+      registrations.forEach(registration => {
+        registration.unregister();
+      });
+      // 注销后刷新页面，加载新的 sw.js
+      window.location.reload();
+    }
+  });
+}
+</script>
 <body>
     <div class="container">
         <header>

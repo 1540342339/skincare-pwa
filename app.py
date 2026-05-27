@@ -10,6 +10,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pwa_app")
 
 app = Flask(__name__, static_folder='static', static_url_path='')
+@app.after_request
+def add_no_cache_headers(response):
+    """对 HTML、JS、CSS 禁止缓存，确保每次加载最新版本"""
+    if request.path.endswith('.html') or request.path.endswith('.js') or request.path.endswith('.css') or request.path == '/':
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+    return response
 
 # ====== Neon 数据库连接 ======
 import psycopg2
