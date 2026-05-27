@@ -12,19 +12,22 @@ logger = logging.getLogger("pwa_app")
 app = Flask(__name__, static_folder='static', static_url_path='')
 
 
-# ====== Supabase 客户端初始化 ======
-def _get_supabase():
-    """延迟初始化 Supabase 客户端"""
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_KEY")
-    if not supabase_url or not supabase_key:
-        logger.warning("未配置 SUPABASE_URL 或 SUPABASE_KEY，缓存功能不可用")
+# ====== Neon 数据库连接 ======
+import psycopg2
+import psycopg2.extras
+
+def _get_db_connection():
+    """获取数据库连接"""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        logger.warning("未配置 DATABASE_URL，缓存功能不可用")
         return None
     try:
-        from supabase import create_client
-        return create_client(supabase_url, supabase_key)
+        conn = psycopg2.connect(database_url)
+        logger.info("数据库连接成功")
+        return conn
     except Exception as e:
-        logger.error(f"Supabase 连接失败: {e}")
+        logger.error(f"数据库连接失败: {e}")
         return None
 
 
@@ -32,50 +35,76 @@ CACHE_TTL_DAYS = 7  # 缓存有效期
 
 
 def _normalize_name(name: str) -> str:
-    """标准化产品名称：去首尾空格、转小写、合并连续空格"""
+    """标准化产品名称"""
     return ' '.join(name.strip().lower().split())
 
 
-def _get_cached(supabase, product_name: str):
-    """查询缓存，若存在且未过期返回数据，否则返回 None"""
-    if supabase is None:
+def _get_cached(product_name: str):
+    """查询缓存"""
+    conn = _get_db_connection()
+    if conn is None:
         return None
     try:
         normalized = _normalize_name(product_name)
-        result = supabase.table("product_cache").select("*").eq("product_name", normalized).execute()
-        if result.data and len(result.data) > 0:
-            row = result.data[0]
-            updated_at = datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute(
+            "SELECT * FROM product_cache WHERE product_name = %s",
+            (normalized,)
+        )
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if row:
+            updated_at = row["updated_at"]
             if datetime.now(timezone.utc) - updated_at < timedelta(days=CACHE_TTL_DAYS):
                 logger.info(f"缓存命中: {product_name}")
-                return row
+                return dict(row)
             else:
                 logger.info(f"缓存已过期: {product_name}")
         return None
     except Exception as e:
         logger.warning(f"查询缓存失败: {e}")
+        if conn:
+            conn.close()
         return None
 
 
-def _set_cache(supabase, product_name: str, ingredients: str, analysis_json: dict, sources: list):
+def _set_cache(product_name: str, ingredients: str, analysis_json: dict, sources: list):
     """写入或更新缓存"""
-    if supabase is None:
+    conn = _get_db_connection()
+    if conn is None:
         return
     try:
         normalized = _normalize_name(product_name)
-        data = {
-            "product_name": normalized,
-            "ingredients": ingredients,
-            "analysis_json": analysis_json,
-            "sources": sources,
-            "source_count": len(sources) if sources else 0,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
-        # upsert: 存在则更新，不存在则插入
-        result = supabase.table("product_cache").upsert(data, on_conflict="product_name").execute()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO product_cache (product_name, ingredients, analysis_json, sources, source_count, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (product_name)
+            DO UPDATE SET
+                ingredients = EXCLUDED.ingredients,
+                analysis_json = EXCLUDED.analysis_json,
+                sources = EXCLUDED.sources,
+                source_count = EXCLUDED.source_count,
+                updated_at = EXCLUDED.updated_at
+        """, (
+            normalized,
+            ingredients,
+            json.dumps(analysis_json),
+            json.dumps(sources),
+            len(sources) if sources else 0,
+            datetime.now(timezone.utc).isoformat()
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
         logger.info(f"缓存已更新: {product_name}")
     except Exception as e:
         logger.warning(f"写入缓存失败: {e}")
+        if conn:
+            conn.rollback()
+            conn.close()
 
 
 def _extract_sources_from_analysis(raw_text: str, sources_raw: list) -> list:
@@ -94,11 +123,6 @@ def _extract_sources_from_analysis(raw_text: str, sources_raw: list) -> list:
                 "credibility": "待评级",
                 "used_for": "成分信息参考"
             })
-
-    # 尝试从 LLM 分析中提取信源评价
-    if "信源评价" in raw_text:
-        # 简单标记：分析中包含信源评价，说明 LLM 已处理
-        pass
 
     return combined
 
@@ -131,27 +155,16 @@ def analyze():
         force_refresh = data.get('force_refresh', False)
         logger.info(f"分析请求: {product_name} (强制刷新: {force_refresh})")
 
-        supabase = _get_supabase()
-
         # 检查缓存
         if not force_refresh:
-            cached = _get_cached(supabase, product_name)
+            cached = _get_cached(product_name)
             if cached:
-                # 尝试记录查询日志（忽略失败）
-                try:
-                    supabase.table("query_log").insert({
-                        "product_name": _normalize_name(product_name),
-                        "cached": True
-                    }).execute()
-                except Exception:
-                    pass
-
                 return jsonify({
                     "success": True,
                     "product_name": product_name,
                     "analysis": cached["analysis_json"],
                     "cached": True,
-                    "cache_date": cached["updated_at"],
+                    "cache_date": cached["updated_at"].isoformat(),
                     "sources": cached.get("sources", [])
                 })
 
@@ -164,31 +177,15 @@ def analyze():
         structured = _structure_result(product_name, raw_result)
 
         # 提取信源信息
-        sources_list = []
-        try:
-            # 从 LLM 返回的原始文本中提取信源 URL
-            sources_list = _extract_sources_from_analysis(raw_result, [])
-        except Exception:
-            pass
+        sources_list = _extract_sources_from_analysis(raw_result, [])
 
         # 写入缓存
         _set_cache(
-            supabase,
             product_name,
             ingredients=structured.get("ingredients", ""),
             analysis_json=structured,
             sources=sources_list
         )
-
-        # 记录查询日志
-        try:
-            if supabase:
-                supabase.table("query_log").insert({
-                    "product_name": _normalize_name(product_name),
-                    "cached": False
-                }).execute()
-        except Exception:
-            pass
 
         return jsonify({
             "success": True,
@@ -214,15 +211,21 @@ def refresh():
         product_name = data['product_name']
         logger.info(f"强制刷新: {product_name}")
 
-        supabase = _get_supabase()
-
         # 删除旧缓存
-        try:
-            if supabase:
+        conn = _get_db_connection()
+        if conn:
+            try:
                 normalized = _normalize_name(product_name)
-                supabase.table("product_cache").delete().eq("product_name", normalized).execute()
-        except Exception as e:
-            logger.warning(f"删除旧缓存失败: {e}")
+                cur = conn.cursor()
+                cur.execute("DELETE FROM product_cache WHERE product_name = %s", (normalized,))
+                conn.commit()
+                cur.close()
+                conn.close()
+            except Exception as e:
+                logger.warning(f"删除旧缓存失败: {e}")
+                if conn:
+                    conn.rollback()
+                    conn.close()
 
         # 重新分析
         raw_result = analyze_skincare.invoke({
@@ -231,17 +234,10 @@ def refresh():
         })
 
         structured = _structure_result(product_name, raw_result)
-
-        # 提取信源
-        sources_list = []
-        try:
-            sources_list = _extract_sources_from_analysis(raw_result, [])
-        except Exception:
-            pass
+        sources_list = _extract_sources_from_analysis(raw_result, [])
 
         # 写入新缓存
         _set_cache(
-            supabase,
             product_name,
             ingredients=structured.get("ingredients", ""),
             analysis_json=structured,
@@ -274,14 +270,10 @@ def compare():
         product_b = data['product_b']
         logger.info(f"对比请求: {product_a} vs {product_b}")
 
-        supabase = _get_supabase()
-
-        # 分别获取两个产品的分析（优先缓存）
         def get_product_analysis(name):
-            if supabase:
-                cached = _get_cached(supabase, name)
-                if cached:
-                    return cached["analysis_json"].get("raw", "") if cached["analysis_json"].get("raw") else json.dumps(cached["analysis_json"], ensure_ascii=False)
+            cached = _get_cached(name)
+            if cached and cached.get("analysis_json", {}).get("_raw"):
+                return cached["analysis_json"]["_raw"]
             raw = analyze_skincare.invoke({"product_name": name, "analysis_type": "safety"})
             return raw
 
@@ -304,14 +296,16 @@ def compare():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    supabase = _get_supabase()
-    db_status = "connected" if supabase else "unavailable"
+    conn = _get_db_connection()
+    db_status = "connected" if conn else "unavailable"
+    if conn:
+        conn.close()
     return jsonify({"status": "ok", "database": db_status})
 
 
 # ====== 辅助函数 ======
 def _get_llm():
-    """创建一个新的 LLM 实例，不依赖外部 agent 模块"""
+    """创建一个新的 LLM 实例"""
     from langchain_openai import ChatOpenAI
     from dotenv import load_dotenv
     from pathlib import Path
@@ -367,7 +361,6 @@ def _structure_result(product_name, raw_text):
         ])
         content = response.content.strip()
 
-        # 清理可能的 Markdown 代码块
         if content.startswith("```"):
             lines = content.split("\n")
             if len(lines) > 1:
@@ -377,12 +370,10 @@ def _structure_result(product_name, raw_text):
         content = content.strip()
 
         result = json.loads(content)
-        # 保留原始文本，但仅作为备用
         result["_raw"] = raw_text
         return result
     except Exception as e:
         logger.warning(f"JSON 整理失败: {e}，使用回退方案")
-        # 降级：提供简单结构化字段，原始内容留作前端折叠展示
         fallback = {
             "summary": f"「{product_name}」成分分析",
             "suitable_for": "详见完整分析",
