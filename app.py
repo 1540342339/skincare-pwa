@@ -1,8 +1,7 @@
-
+import os
 import json
 import logging
 import traceback
-
 
 from flask import Flask, request, jsonify, send_from_directory
 from tools_pwa import analyze_skincare
@@ -35,12 +34,15 @@ def analyze():
         product_name = data['product_name']
         logger.info(f"分析请求: {product_name}")
 
+        # 1. 调用核心分析功能
         raw_result = analyze_skincare.invoke({
             "product_name": product_name,
             "analysis_type": "safety"
         })
 
+        # 2. 用 LLM 整理为结构化 JSON
         structured = _structure_result(product_name, raw_result)
+
         return jsonify({
             "success": True,
             "product_name": product_name,
@@ -63,11 +65,9 @@ def compare():
         product_b = data['product_b']
         logger.info(f"对比请求: {product_a} vs {product_b}")
 
-        # 分别获取分析
         raw_a = analyze_skincare.invoke({"product_name": product_a, "analysis_type": "safety"})
         raw_b = analyze_skincare.invoke({"product_name": product_b, "analysis_type": "safety"})
 
-        # 用 LLM 生成对比 JSON
         comparison = _structure_comparison(product_a, raw_a, product_b, raw_b)
 
         return jsonify({
@@ -85,17 +85,37 @@ def compare():
 def health():
     return jsonify({"status": "ok"})
 
+# ====== 辅助函数：使用独立的 LLM 实例 ======
+
+def _get_llm():
+    """创建一个新的 LLM 实例，不依赖外部 agent 模块"""
+    from langchain_openai import ChatOpenAI
+    from dotenv import load_dotenv
+    from pathlib import Path
+
+    env_path = Path(__file__).parent / ".env"
+    load_dotenv(dotenv_path=env_path)
+
+    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    return ChatOpenAI(
+        model=DEEPSEEK_MODEL,
+        openai_api_key=DEEPSEEK_API_KEY,
+        openai_api_base="https://api.deepseek.com",
+        temperature=0.1,
+        request_timeout=60
+    )
+
 def _structure_result(product_name, raw_text):
     """将单品分析文本整理为结构化 JSON"""
     from langchain_core.messages import SystemMessage, HumanMessage
-    from agent import llm
 
     prompt = f"""请将以下关于「{product_name}」的护肤品分析内容，整理为 JSON 格式。只输出 JSON，不要任何额外文字。
 
 原始分析：
 {raw_text[:3000]}
 
-输出格式：
+输出格式（严格按此 JSON schema）：
 {{
   "summary": "一句话总结，不超过40字",
   "suitable_for": "适合的肤质（简短）",
@@ -114,6 +134,7 @@ def _structure_result(product_name, raw_text):
 }}"""
 
     try:
+        llm = _get_llm()
         response = llm.invoke([
             SystemMessage(content="你是一个数据整理助手，只输出JSON。"),
             HumanMessage(content=prompt)
@@ -133,7 +154,6 @@ def _structure_result(product_name, raw_text):
 def _structure_comparison(name_a, raw_a, name_b, raw_b):
     """生成两产品对比 JSON"""
     from langchain_core.messages import SystemMessage, HumanMessage
-    from agent import llm
 
     prompt = f"""你是护肤品配方师。根据以下两个产品的分析，生成搭配检查 JSON。只输出 JSON。
 
@@ -159,6 +179,7 @@ def _structure_comparison(name_a, raw_a, name_b, raw_b):
 }}"""
 
     try:
+        llm = _get_llm()
         response = llm.invoke([
             SystemMessage(content="只输出JSON。"),
             HumanMessage(content=prompt)
@@ -176,6 +197,6 @@ def _structure_comparison(name_a, raw_a, name_b, raw_b):
         return {"raw": f"产品A分析:\n{raw_a[:500]}\n\n产品B分析:\n{raw_b[:500]}"}
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    print(f"服务器启动: http://localhost:{port}")
+    app.run(host='0.0.0.0', port=port)
