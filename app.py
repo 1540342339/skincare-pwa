@@ -155,7 +155,7 @@ def _search_product(product_name: str):
     return ingredient_text, sources
 
 def _extract_sources_from_analysis(raw_text: str, search_sources: list) -> list:
-    """基于搜索到的原始信源构建前端需要的信源列表"""
+    """基于搜索到的原始信源构建前端需要的信源列表（无评级）"""
     combined = []
     seen_urls = set()
     for s in search_sources:
@@ -166,7 +166,6 @@ def _extract_sources_from_analysis(raw_text: str, search_sources: list) -> list:
             combined.append({
                 "url": url,
                 "title": title[:120] if title else "未知来源",
-                "credibility": "待评级",  # 可由 LLM 信源评价进一步填充，这里先默认
                 "used_for": "成分信息参考"
             })
     return combined

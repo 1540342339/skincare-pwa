@@ -2,74 +2,59 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#F5EDE0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#C9956B">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="护肤助手">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
     <title>护肤成分分析</title>
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🔬 护肤成分分析</h1>
-            <p class="subtitle">科学护肤，成分排雷</p>
+            <h1>🧴 护肤成分分析</h1>
+            <p class="subtitle">输入产品名，获取成分安全性分析 & 搭配建议</p>
+            <p class="bio">Hi~ 我是<strong>@李大漂亮很灵活</strong>，帮你科学解读护肤品 ✨</p>
         </header>
 
-        <!-- 模式切换标签 -->
         <div class="tabs">
-            <button id="tabSingle" class="tab active" onclick="switchMode('single')">📱 单品分析</button>
+            <button id="tabSingle" class="tab active" onclick="switchMode('single')">🔍 单品分析</button>
             <button id="tabCompare" class="tab" onclick="switchMode('compare')">⚖️ 搭配检查</button>
         </div>
 
-        <main>
-            <!-- 单品分析输入区 -->
-            <div id="singleMode" class="mode-panel">
-                <div class="search-box">
-                    <input 
-                        type="text" 
-                        id="productInput" 
-                        placeholder="输入产品名，如：修丽可CE精华" 
-                        autocomplete="off"
-                    >
-                    <button id="analyzeBtn" onclick="analyzeProduct()">
-                        开始分析
-                    </button>
-                </div>
+        <div id="singleMode">
+            <div class="search-box">
+                <input type="text" id="productInput" placeholder="输入护肤品名称..." autocomplete="off">
+                <button id="analyzeBtn" onclick="analyzeProduct()">分析</button>
             </div>
+        </div>
 
-            <!-- 搭配检查输入区 -->
-            <div id="compareMode" class="mode-panel hidden">
-                <div class="compare-inputs">
-                    <input type="text" id="productAInput" placeholder="产品A，如：修丽可CE精华">
-                    <span class="vs">VS</span>
-                    <input type="text" id="productBInput" placeholder="产品B，如：欧莱雅黑精华">
-                </div>
-                <button id="compareBtn" class="btn-full" onclick="compareProducts()">
-                    检查搭配
-                </button>
+        <div id="compareMode" class="hidden">
+            <div class="compare-inputs">
+                <input type="text" id="productAInput" placeholder="产品A 名称...">
+                <div class="vs">VS</div>
+                <input type="text" id="productBInput" placeholder="产品B 名称...">
+                <button id="compareBtn" class="btn-full" onclick="compareProducts()">开始对比</button>
             </div>
+        </div>
 
-            <div id="loading" class="loading hidden">
-                <div class="spinner"></div>
-                <p>正在分析成分...</p>
-            </div>
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p class="loading-text">正在分析成分，请稍候...</p>
+        </div>
 
-            <div id="result" class="result hidden">
-                <h2 id="resultTitle"></h2>
-                <div id="resultContent"></div>
-            </div>
+        <div id="error" class="error hidden"></div>
 
-            <div id="error" class="error hidden"></div>
-        </main>
-
-        <footer>
-            <p>基于公开成分数据分析，仅供参考</p>
-        </footer>
+        <div id="result" class="result hidden">
+            <h2 id="resultTitle"></h2>
+            <div id="resultContent"></div>
+        </div>
     </div>
 
-    <script src="/app.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>
