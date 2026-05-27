@@ -1,10 +1,8 @@
-import sys
-import os
+
 import json
 import logging
 import traceback
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from flask import Flask, request, jsonify, send_from_directory
 from tools import analyze_skincare
