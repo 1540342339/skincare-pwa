@@ -332,19 +332,19 @@ def _get_llm():
 
 
 def _structure_result(product_name, raw_text):
-    """将单品分析文本整理为结构化 JSON（增加 sources 字段）"""
+    """将单品分析文本整理为结构化 JSON（增强容错与回退）"""
     from langchain_core.messages import SystemMessage, HumanMessage
 
-    prompt = f"""请将以下关于「{product_name}」的护肤品分析内容，整理为 JSON 格式。只输出 JSON，不要任何额外文字。
+    prompt = f"""请将以下关于「{product_name}」的护肤品分析内容整理为 JSON 格式。只输出 JSON 对象，不要任何额外文字、标记或代码块。
 
-原始分析：
+原始分析内容：
 {raw_text[:3000]}
 
-输出格式（严格按此 JSON schema）：
+输出 JSON 格式（严格遵循）：
 {{
   "summary": "一句话总结，不超过40字",
-  "suitable_for": "适合的肤质（简短）",
-  "caution_for": "需慎用的肤质及原因（简短）",
+  "suitable_for": "适合的肤质，简短",
+  "caution_for": "需慎用的肤质及原因，简短",
   "risks": {{
     "acne": "致痘风险成分，没有则写\"未发现\"",
     "irritation": "刺激性成分，没有则写\"未发现\"",
@@ -356,28 +356,49 @@ def _structure_result(product_name, raw_text):
   "formula_comment": "配方骨架评价，不超过80字",
   "usage_tips": ["使用建议1", "使用建议2"],
   "source_url": "提取原文中的链接，没有则写空字符串"
-}}"""
+}}
+"""
 
     try:
         llm = _get_llm()
         response = llm.invoke([
-            SystemMessage(content="你是一个数据整理助手，只输出JSON。"),
+            SystemMessage(content="你是一个数据整理助手，只输出JSON，不要任何解释。"),
             HumanMessage(content=prompt)
         ])
         content = response.content.strip()
+
+        # 清理可能的 Markdown 代码块
         if content.startswith("```"):
             lines = content.split("\n")
             if len(lines) > 1:
                 content = "\n".join(lines[1:])
             if content.endswith("```"):
                 content = content[:-3]
+        content = content.strip()
+
         result = json.loads(content)
-        # 保留原始文本，用于后续提取信源
-        result["raw"] = raw_text
+        # 保留原始文本，但仅作为备用
+        result["_raw"] = raw_text
         return result
     except Exception as e:
-        logger.warning(f"JSON 整理失败: {e}")
-        return {"raw": raw_text}
+        logger.warning(f"JSON 整理失败: {e}，使用回退方案")
+        # 降级：提供简单结构化字段，原始内容留作前端折叠展示
+        fallback = {
+            "summary": f"「{product_name}」成分分析",
+            "suitable_for": "详见完整分析",
+            "caution_for": "详见完整分析",
+            "risks": {
+                "acne": "详见完整分析",
+                "irritation": "详见完整分析",
+                "pregnancy": "详见完整分析"
+            },
+            "key_ingredients": [],
+            "formula_comment": "结构化提取失败，请查看下方完整分析文本",
+            "usage_tips": [],
+            "source_url": "",
+            "_raw_fallback": raw_text
+        }
+        return fallback
 
 
 def _structure_comparison(name_a, raw_a, name_b, raw_b):
