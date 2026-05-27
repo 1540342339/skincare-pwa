@@ -11,13 +11,11 @@ logger = logging.getLogger("pwa_app")
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
-
 # ====== Neon 数据库连接 ======
 import psycopg2
 import psycopg2.extras
 
 def _get_db_connection():
-    """获取数据库连接"""
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         logger.warning("未配置 DATABASE_URL，缓存功能不可用")
@@ -30,31 +28,22 @@ def _get_db_connection():
         logger.error(f"数据库连接失败: {e}")
         return None
 
-
-CACHE_TTL_DAYS = 7  # 缓存有效期
-
+CACHE_TTL_DAYS = 7
 
 def _normalize_name(name: str) -> str:
-    """标准化产品名称"""
     return ' '.join(name.strip().lower().split())
 
-
 def _get_cached(product_name: str):
-    """查询缓存"""
     conn = _get_db_connection()
     if conn is None:
         return None
     try:
         normalized = _normalize_name(product_name)
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute(
-            "SELECT * FROM product_cache WHERE product_name = %s",
-            (normalized,)
-        )
+        cur.execute("SELECT * FROM product_cache WHERE product_name = %s", (normalized,))
         row = cur.fetchone()
         cur.close()
         conn.close()
-        
         if row:
             updated_at = row["updated_at"]
             if datetime.now(timezone.utc) - updated_at < timedelta(days=CACHE_TTL_DAYS):
@@ -69,9 +58,7 @@ def _get_cached(product_name: str):
             conn.close()
         return None
 
-
 def _set_cache(product_name: str, ingredients: str, analysis_json: dict, sources: list):
-    """写入或更新缓存"""
     conn = _get_db_connection()
     if conn is None:
         return
@@ -106,13 +93,72 @@ def _set_cache(product_name: str, ingredients: str, analysis_json: dict, sources
             conn.rollback()
             conn.close()
 
+def _search_product(product_name: str):
+    """搜索产品成分信息，返回 (ingredient_text, sources_list)"""
+    search_queries = [
+        f"{product_name} 全成分表 备案",
+        f"{product_name} 成分表",
+        f"{product_name} 成分 功效",
+        f"{product_name} ingredients skincare",
+    ]
+    sources = []
+    for sq in search_queries:
+        if sources:
+            break
+        logger.info(f"尝试搜索: {sq}")
+        try:
+            if os.getenv("TAVILY_API_KEY"):
+                from langchain_tavily import TavilySearch
+                search = TavilySearch(
+                    tavily_api_key=os.getenv("TAVILY_API_KEY"),
+                    max_results=5,
+                    search_depth="advanced",
+                    include_answer=True
+                )
+                raw = search.invoke(sq)
+                if isinstance(raw, dict):
+                    sources = raw.get('results', [])
+                else:
+                    sources = getattr(raw, 'results', [])
+            if not sources:
+                try:
+                    from duckduckgo_search import DDGS
+                    with DDGS() as ddgs:
+                        raw_ddg = list(ddgs.text(sq, max_results=5))
+                        sources = [
+                            {'title': r.get('title', ''), 'content': r.get('body', ''), 'url': r.get('href', '')}
+                            for r in raw_ddg
+                        ]
+                except ImportError:
+                    logger.warning("DuckDuckGo 搜索不可用")
+            if sources:
+                logger.info(f"搜索 '{sq}' 获得 {len(sources)} 个结果")
+                break
+        except Exception as e:
+            logger.warning(f"搜索失败: {e}")
+            continue
 
-def _extract_sources_from_analysis(raw_text: str, sources_raw: list) -> list:
-    """从原始分析文本和搜索来源中提取信源列表"""
+    if not sources:
+        return "", []
+
+    # 提取成分文本（优先包含“成分”关键词的片段）
+    ingredient_text = ""
+    for s in sources:
+        content = s.get('content', '') if isinstance(s, dict) else getattr(s, 'content', '')
+        if '成分' in content or '备案' in content:
+            ingredient_text = content[:2000]
+            break
+    if not ingredient_text:
+        s0 = sources[0]
+        ingredient_text = (s0.get('content', '') if isinstance(s0, dict) else getattr(s0, 'content', ''))[:2000]
+
+    return ingredient_text, sources
+
+def _extract_sources_from_analysis(raw_text: str, search_sources: list) -> list:
+    """基于搜索到的原始信源构建前端需要的信源列表"""
     combined = []
     seen_urls = set()
-
-    for s in sources_raw:
+    for s in search_sources:
         url = s.get('url', '') if isinstance(s, dict) else getattr(s, 'url', '')
         if url and url not in seen_urls:
             seen_urls.add(url)
@@ -120,32 +166,26 @@ def _extract_sources_from_analysis(raw_text: str, sources_raw: list) -> list:
             combined.append({
                 "url": url,
                 "title": title[:120] if title else "未知来源",
-                "credibility": "待评级",
+                "credibility": "待评级",  # 可由 LLM 信源评价进一步填充，这里先默认
                 "used_for": "成分信息参考"
             })
-
     return combined
-
 
 # ====== 路由 ======
 @app.route('/')
 def index():
     return send_from_directory(app.static_folder, 'index.html')
 
-
 @app.route('/manifest.json')
 def manifest():
     return send_from_directory(app.static_folder, 'manifest.json')
-
 
 @app.route('/sw.js')
 def service_worker():
     return send_from_directory(app.static_folder, 'sw.js')
 
-
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
-    """单品分析（含缓存）"""
     try:
         data = request.get_json()
         if not data or 'product_name' not in data:
@@ -168,16 +208,21 @@ def analyze():
                     "sources": cached.get("sources", [])
                 })
 
-        # 缓存未命中，执行实时分析
+        # 实时搜索
+        ingredient_text, search_sources = _search_product(product_name)
+        if not ingredient_text and not search_sources:
+            return jsonify({"error": f"未找到「{product_name}」的成分信息，请尝试其他名称"}), 404
+
+        # 调用分析工具（传入预搜索数据，避免工具内重复搜索）
         raw_result = analyze_skincare.invoke({
             "product_name": product_name,
-            "analysis_type": "safety"
+            "analysis_type": "safety",
+            "pre_search_text": ingredient_text,
+            "pre_search_sources": search_sources
         })
 
         structured = _structure_result(product_name, raw_result)
-
-        # 提取信源信息
-        sources_list = _extract_sources_from_analysis(raw_result, [])
+        sources_list = _extract_sources_from_analysis(raw_result, search_sources)
 
         # 写入缓存
         _set_cache(
@@ -199,10 +244,8 @@ def analyze():
         logger.error(f"分析失败: {traceback.format_exc()}")
         return jsonify({"error": f"分析失败: {str(e)}"}), 500
 
-
 @app.route('/api/refresh', methods=['POST'])
 def refresh():
-    """强制刷新缓存"""
     try:
         data = request.get_json()
         if not data or 'product_name' not in data:
@@ -227,22 +270,21 @@ def refresh():
                     conn.rollback()
                     conn.close()
 
-        # 重新分析
+        ingredient_text, search_sources = _search_product(product_name)
+        if not ingredient_text and not search_sources:
+            return jsonify({"error": f"未找到「{product_name}」的成分信息"}), 404
+
         raw_result = analyze_skincare.invoke({
             "product_name": product_name,
-            "analysis_type": "safety"
+            "analysis_type": "safety",
+            "pre_search_text": ingredient_text,
+            "pre_search_sources": search_sources
         })
 
         structured = _structure_result(product_name, raw_result)
-        sources_list = _extract_sources_from_analysis(raw_result, [])
+        sources_list = _extract_sources_from_analysis(raw_result, search_sources)
 
-        # 写入新缓存
-        _set_cache(
-            product_name,
-            ingredients=structured.get("ingredients", ""),
-            analysis_json=structured,
-            sources=sources_list
-        )
+        _set_cache(product_name, structured.get("ingredients", ""), structured, sources_list)
 
         return jsonify({
             "success": True,
@@ -257,10 +299,8 @@ def refresh():
         logger.error(f"刷新失败: {traceback.format_exc()}")
         return jsonify({"error": f"刷新失败: {str(e)}"}), 500
 
-
 @app.route('/api/compare', methods=['POST'])
 def compare():
-    """两产品搭配检查（支持缓存）"""
     try:
         data = request.get_json()
         if not data or 'product_a' not in data or 'product_b' not in data:
@@ -274,7 +314,15 @@ def compare():
             cached = _get_cached(name)
             if cached and cached.get("analysis_json", {}).get("_raw"):
                 return cached["analysis_json"]["_raw"]
-            raw = analyze_skincare.invoke({"product_name": name, "analysis_type": "safety"})
+            ingredient_text, search_sources = _search_product(name)
+            if not ingredient_text:
+                return f"❌ 未找到「{name}」的成分信息"
+            raw = analyze_skincare.invoke({
+                "product_name": name,
+                "analysis_type": "safety",
+                "pre_search_text": ingredient_text,
+                "pre_search_sources": search_sources
+            })
             return raw
 
         raw_a = get_product_analysis(product_a)
@@ -293,7 +341,6 @@ def compare():
         logger.error(f"对比失败: {traceback.format_exc()}")
         return jsonify({"error": f"对比失败: {str(e)}"}), 500
 
-
 @app.route('/api/health', methods=['GET'])
 def health():
     result = {"status": "ok"}
@@ -302,8 +349,6 @@ def health():
         result["database"] = "unavailable"
         result["error"] = "DATABASE_URL 环境变量未设置"
         return jsonify(result)
-    
-    # 隐藏密码部分，安全返回
     masked = database_url
     if "@" in masked:
         parts = masked.split("@")
@@ -314,7 +359,6 @@ def health():
             parts[0] = ":".join(user_pass)
         masked = "@".join(parts)
     result["database_url_masked"] = masked
-    
     try:
         import psycopg2
         conn = psycopg2.connect(database_url)
@@ -326,13 +370,10 @@ def health():
     except Exception as e:
         result["database"] = "unavailable"
         result["error"] = str(e)
-    
     return jsonify(result)
-
 
 # ====== 辅助函数 ======
 def _get_llm():
-    """创建一个新的 LLM 实例"""
     from langchain_openai import ChatOpenAI
     from dotenv import load_dotenv
     from pathlib import Path
@@ -351,9 +392,7 @@ def _get_llm():
         request_timeout=60
     )
 
-
 def _structure_result(product_name, raw_text):
-    """将单品分析文本整理为结构化 JSON（增强容错与回退）"""
     from langchain_core.messages import SystemMessage, HumanMessage
 
     prompt = f"""请将以下关于「{product_name}」的护肤品分析内容整理为 JSON 格式。只输出 JSON 对象，不要任何额外文字、标记或代码块。
@@ -387,7 +426,6 @@ def _structure_result(product_name, raw_text):
             HumanMessage(content=prompt)
         ])
         content = response.content.strip()
-
         if content.startswith("```"):
             lines = content.split("\n")
             if len(lines) > 1:
@@ -395,7 +433,6 @@ def _structure_result(product_name, raw_text):
             if content.endswith("```"):
                 content = content[:-3]
         content = content.strip()
-
         result = json.loads(content)
         result["_raw"] = raw_text
         return result
@@ -418,9 +455,7 @@ def _structure_result(product_name, raw_text):
         }
         return fallback
 
-
 def _structure_comparison(name_a, raw_a, name_b, raw_b):
-    """生成两产品对比 JSON"""
     from langchain_core.messages import SystemMessage, HumanMessage
 
     prompt = f"""你是护肤品配方师。根据以下两个产品的分析，生成搭配检查 JSON。只输出 JSON。
@@ -459,7 +494,6 @@ def _structure_comparison(name_a, raw_a, name_b, raw_b):
     except Exception as e:
         logger.warning(f"对比 JSON 生成失败: {e}")
         return {"raw": f"产品A分析:\n{raw_a[:500]}\n\n产品B分析:\n{raw_b[:500]}"}
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

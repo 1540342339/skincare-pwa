@@ -12,84 +12,101 @@ if not TAVILY_API_KEY:
     logger.warning("未设置 TAVILY_API_KEY，联网搜索将使用 DuckDuckGo 作为备选")
 
 
-# ====== 核心分析工具 ======
 @tool
-def analyze_skincare(product_name: str, analysis_type: str = "safety") -> str:
-    """分析护肤品的成分安全性和配伍禁忌。product_name 为产品名称，analysis_type 可选 'safety'(安全性) 或 'conflict'(与另一产品的冲突检查)。"""
+def analyze_skincare(product_name: str, analysis_type: str = "safety",
+                     pre_search_text: str = "", pre_search_sources: list = None) -> str:
+    """分析护肤品的成分安全性和配伍禁忌。product_name 为产品名称，analysis_type 可选 'safety'(安全性) 或 'conflict'(与另一产品的冲突检查)。
+    可选参数 pre_search_text 为已搜索到的成分文本，pre_search_sources 为已搜索到的信源列表。
+    """
     try:
-        # Step 1: 搜索产品成分表
-        search_query = f"{product_name} 全成分表 备案"
-        sources = []
+        if pre_search_sources is None:
+            pre_search_sources = []
 
-        if TAVILY_API_KEY:
-            try:
-                from langchain_tavily import TavilySearch
-                search = TavilySearch(
-                    tavily_api_key=TAVILY_API_KEY,
-                    max_results=5,
-                    search_depth="advanced",
-                    include_answer=True
-                )
-                raw = search.invoke(search_query)
-                if isinstance(raw, dict):
-                    sources = raw.get('results', [])
-                else:
-                    sources = getattr(raw, 'results', [])
-            except Exception as e:
-                logger.warning(f"Tavily 搜索失败: {e}")
+        # Step 1: 优先使用传入的搜索数据，否则自主搜索
+        if pre_search_text:
+            ingredient_text = pre_search_text
+            sources = pre_search_sources
+            source_url = sources[0].get('url', '') if sources else ''
+            all_sources_for_llm = []
+            for i, s in enumerate(sources):
+                all_sources_for_llm.append({
+                    "index": i + 1,
+                    "title": s.get('title', '')[:100],
+                    "url": s.get('url', ''),
+                    "content_snippet": s.get('content', '')[:800]
+                })
+        else:
+            # 多关键词尝试搜索
+            search_queries = [
+                f"{product_name} 全成分表 备案",
+                f"{product_name} 成分表",
+                f"{product_name} 成分 功效",
+                f"{product_name} ingredients skincare",
+            ]
+            sources = []
+            for sq in search_queries:
+                if sources:
+                    break
+                logger.info(f"尝试搜索: {sq}")
+                try:
+                    if TAVILY_API_KEY:
+                        from langchain_tavily import TavilySearch
+                        search = TavilySearch(
+                            tavily_api_key=TAVILY_API_KEY,
+                            max_results=5,
+                            search_depth="advanced",
+                            include_answer=True
+                        )
+                        raw = search.invoke(sq)
+                        if isinstance(raw, dict):
+                            sources = raw.get('results', [])
+                        else:
+                            sources = getattr(raw, 'results', [])
+                    if not sources:
+                        try:
+                            from duckduckgo_search import DDGS
+                            with DDGS() as ddgs:
+                                raw_ddg = list(ddgs.text(sq, max_results=5))
+                                sources = [
+                                    {'title': r.get('title', ''), 'content': r.get('body', ''), 'url': r.get('href', '')}
+                                    for r in raw_ddg
+                                ]
+                        except ImportError:
+                            logger.warning("DuckDuckGo 搜索不可用，请安装 ddgs 包")
+                    if sources:
+                        logger.info(f"搜索 '{sq}' 获得 {len(sources)} 个结果")
+                        break
+                except Exception as e:
+                    logger.warning(f"搜索 '{sq}' 失败: {e}")
+                    continue
 
-        if not sources:
-            try:
-                from duckduckgo_search import DDGS
-                with DDGS() as ddgs:
-                    raw = list(ddgs.text(search_query, max_results=5))
-                    sources = [
-                        {
-                            'title': r.get('title', ''),
-                            'content': r.get('body', ''),
-                            'url': r.get('href', '')
-                        }
-                        for r in raw
-                    ]
-            except Exception:
-                pass
+            if not sources:
+                return f"❌ 未找到「{product_name}」的成分信息。请确认产品名称是否正确，或尝试搜索其英文名。"
 
-        if not sources:
-            return f"❌ 未找到「{product_name}」的成分信息。请确认产品名称是否正确，或尝试搜索其英文名。"
+            # 提取成分文本
+            ingredient_text = ""
+            for s in sources:
+                content = s.get('content', '') if isinstance(s, dict) else getattr(s, 'content', '')
+                if '成分' in content or '备案' in content:
+                    ingredient_text = content[:2000]
+                    break
+            if not ingredient_text:
+                s0 = sources[0]
+                ingredient_text = (s0.get('content', '') if isinstance(s0, dict) else getattr(s0, 'content', ''))[:2000]
 
-        # Step 2: 提取所有来源的成分信息和链接
-        all_sources_for_llm = []
-        ingredient_text = ""
-        source_url = ""
+            source_url = sources[0].get('url', '') if sources else ""
 
-        for i, s in enumerate(sources):
-            content = s.get('content', '') if isinstance(s, dict) else getattr(s, 'content', '')
-            url = s.get('url', '') if isinstance(s, dict) else getattr(s, 'url', '')
-            title = s.get('title', '') if isinstance(s, dict) else getattr(s, 'title', '')
+            # 为 LLM 准备信源列表
+            all_sources_for_llm = []
+            for i, s in enumerate(sources):
+                all_sources_for_llm.append({
+                    "index": i + 1,
+                    "title": s.get('title', '')[:100],
+                    "url": s.get('url', ''),
+                    "content_snippet": s.get('content', '')[:800]
+                })
 
-            # 收集所有信源信息
-            all_sources_for_llm.append({
-                "index": i + 1,
-                "title": title[:100],
-                "url": url,
-                "content_snippet": content[:800]
-            })
-
-            # 优先选取包含成分或备案关键词的来源作为主分析文本
-            if not ingredient_text and ('成分' in content or '备案' in content):
-                ingredient_text = content[:2000]
-                source_url = url
-
-        # 如果没找到成分关键词，使用第一个来源
-        if not ingredient_text:
-            s0 = sources[0]
-            ingredient_text = (s0.get('content', '') if isinstance(s0, dict) else getattr(s0, 'content', ''))[:2000]
-            source_url = s0.get('url', '') if isinstance(s0, dict) else getattr(s0, 'url', '')
-
-        # 将信源列表序列化给 LLM
-        sources_json = json.dumps(all_sources_for_llm, ensure_ascii=False, indent=2)
-
-        # Step 3: 调用 LLM 进行深度分析
+        # Step 2: 调用 LLM 进行深度分析
         analysis_prompt = f"""你是一位资深化妆品配方师。请根据以下信息分析产品「{product_name}」：
 
 成分信息来源：{source_url}
@@ -98,7 +115,7 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety") -> str:
 {ingredient_text}
 
 所有搜索到的信源列表：
-{sources_json}
+{json.dumps(all_sources_for_llm, ensure_ascii=False, indent=2)}
 
 分析要求（请严格遵循）：
 1. 列出该产品的主要功效成分及其作用。
@@ -142,7 +159,7 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety") -> str:
 
         final_analysis = analysis_result.content.strip()
 
-        # Step 4: 组合最终输出（附带信源列表）
+        # Step 3: 组合输出
         output = f"## **{product_name}** 成分分析\n\n"
         output += final_analysis
         output += f"\n\n📎 成分来源：{source_url}"
