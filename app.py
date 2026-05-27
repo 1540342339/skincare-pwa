@@ -1,10 +1,8 @@
-import sys
-import os
+
 import json
 import logging
 import traceback
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from flask import Flask, request, jsonify, send_from_directory
 from tools import analyze_skincare
@@ -178,7 +176,6 @@ def _structure_comparison(name_a, raw_a, name_b, raw_b):
         return {"raw": f"产品A分析:\n{raw_a[:500]}\n\n产品B分析:\n{raw_b[:500]}"}
 
 if __name__ == '__main__':
+    import os
     port = int(os.environ.get('PORT', 5000))
-    print(f"服务器启动: http://localhost:{port}")
-    # # from waitress import serve
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
