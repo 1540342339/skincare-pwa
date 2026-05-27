@@ -4,3 +4,12 @@ langchain-tavily>=0.1.5
 duckduckgo-search>=7.5.1
 python-dotenv>=1.0.0
 gunicorn>=22.0.0
+psutil
+pyperclip
+requests
+Pillow
+qrcode
+deep-translator
+openpyxl
+chromadb
+sentence-transformers
