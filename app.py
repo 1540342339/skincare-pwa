@@ -296,11 +296,38 @@ def compare():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    conn = _get_db_connection()
-    db_status = "connected" if conn else "unavailable"
-    if conn:
+    result = {"status": "ok"}
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        result["database"] = "unavailable"
+        result["error"] = "DATABASE_URL 环境变量未设置"
+        return jsonify(result)
+    
+    # 隐藏密码部分，安全返回
+    masked = database_url
+    if "@" in masked:
+        parts = masked.split("@")
+        if ":" in parts[0]:
+            user_pass = parts[0].split(":")
+            if len(user_pass) >= 2:
+                user_pass[1] = "***"
+            parts[0] = ":".join(user_pass)
+        masked = "@".join(parts)
+    result["database_url_masked"] = masked
+    
+    try:
+        import psycopg2
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
         conn.close()
-    return jsonify({"status": "ok", "database": db_status})
+        result["database"] = "connected"
+    except Exception as e:
+        result["database"] = "unavailable"
+        result["error"] = str(e)
+    
+    return jsonify(result)
 
 
 # ====== 辅助函数 ======
