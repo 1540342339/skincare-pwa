@@ -13,6 +13,15 @@ header { text-align: center; margin-bottom: 24px; }
 header h1 { font-size: 28px; font-weight: 600; color: #C9956B; margin-bottom: 8px; }
 .subtitle { font-size: 14px; color: #A0887A; }
 
+/* 个性签名 */
+.bio {
+    text-align: center;
+    font-size: 15px;
+    color: #B8845A;
+    margin-top: -4px;
+    margin-bottom: 16px;
+}
+
 .tabs { display: flex; gap: 8px; margin-bottom: 24px; }
 .tab {
     flex: 1; padding: 12px 0; border: 2px solid #E5D5C0; background: #FFF8EE;
@@ -82,7 +91,7 @@ header h1 { font-size: 28px; font-weight: 600; color: #C9956B; margin-bottom: 8p
 
 .hidden { display: none !important; }
 
-/* ====== 缓存状态横幅 ====== */
+/* 缓存状态横幅 */
 .cache-banner {
     border-radius: 12px; padding: 12px 16px; margin-bottom: 12px;
     display: flex; align-items: center; justify-content: space-between;
@@ -97,7 +106,7 @@ header h1 { font-size: 28px; font-weight: 600; color: #C9956B; margin-bottom: 8p
 }
 .refresh-btn:hover { opacity: 0.8; }
 
-/* ====== 信源模块 ====== */
+/* 信源模块 */
 .sources-card .sources-header {
     cursor: pointer; display: flex; justify-content: space-between;
     align-items: center; user-select: none;
@@ -106,35 +115,63 @@ header h1 { font-size: 28px; font-weight: 600; color: #C9956B; margin-bottom: 8p
 .toggle-icon { font-size: 12px; transition: transform 0.2s; }
 
 .source-item {
-    display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 0;
     border-bottom: 1px solid #F5EDE0;
 }
 .source-item:last-child { border-bottom: none; }
-.source-icon { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
-.source-info { display: flex; flex-direction: column; gap: 4px; }
-.source-title { font-size: 13px; font-weight: 500; color: #3D322C; text-decoration: none; }
-.source-title:hover { text-decoration: underline; }
-.source-cred {
-    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 8px;
-    font-weight: 500; width: fit-content;
+.source-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #3D322C;
+    text-decoration: none;
 }
-.cred-official { background: #E8F5E9; color: #2E7D32; }
-.cred-database { background: #E3F2FD; color: #1565C0; }
-.cred-review { background: #FFF8E1; color: #F57F17; }
-.cred-unknown { background: #F5F5F5; color: #757575; }
-.source-used { font-size: 11px; color: #A0887A; }
+.source-title:hover { text-decoration: underline; }
+.source-used {
+    font-size: 11px;
+    color: #A0887A;
+    display: block;
+    margin-top: 2px;
+}
 
-/* ====== 成分列表 ====== */
+/* 分析师署名 */
+.analyst-tag {
+    text-align: center;
+    font-size: 13px;
+    color: #A0887A;
+    margin-bottom: 6px;
+}
+.analyst-tag a {
+    color: #C9956B;
+    text-decoration: none;
+    font-weight: 500;
+}
+.analyst-tag a:hover { text-decoration: underline; }
+
+/* 免责声明 */
+.disclaimer {
+    text-align: center;
+    font-size: 12px;
+    color: #A0887A;
+    margin-top: 20px;
+    padding: 12px 8px;
+    border-top: 1px solid #E5D5C0;
+    line-height: 1.6;
+}
+
+/* 成分列表 */
 .ingredient-list { display: flex; flex-direction: column; gap: 6px; }
 .ingredient-item { display: flex; justify-content: space-between; align-items: center; }
 .ing-name { font-weight: 500; color: #3D322C; }
 .ing-effect { font-size: 12px; color: #A0887A; }
 
-/* ====== 使用建议 ====== */
+/* 使用建议 */
 .tips-list { padding-left: 20px; }
 .tips-list li { margin-bottom: 4px; }
 
-/* ====== 响应式 ====== */
+/* 响应式 */
 @media (max-width: 480px) {
     .container { padding: 16px 12px; }
     header h1 { font-size: 24px; }

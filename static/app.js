@@ -143,7 +143,7 @@ function renderSingleCards(analysis, cached, cacheDate, sources) {
         html += card('⚠️ 风险提示', txt);
     }
 
-    // 信源透明度模块
+    // 信源透明度模块（无评级）
     if (sources && sources.length > 0) {
         html += renderSourcesCard(sources);
     }
@@ -187,32 +187,28 @@ function renderSingleCards(analysis, cached, cacheDate, sources) {
         </div>`;
     }
 
+    // 分析师署名
+    html += `
+    <div class="analyst-tag">
+        🔬 成分分析支持：<a href="https://xhslink.com/m/1dph9IjtAcW" target="_blank">@李大漂亮很灵活</a>
+    </div>`;
+
+    // 免责声明
+    html += `
+    <div class="disclaimer">
+        ⚠️ 以上分析基于公开成分数据和配方科学常识，仅供参考，不构成专业医疗建议。具体效果因人而异，建议先做局部测试。
+    </div>`;
+
     return html;
 }
 
 function renderSourcesCard(sources) {
     let items = '';
     sources.forEach((s, i) => {
-        const cred = s.credibility || '待评级';
-        let icon = '⚪';
-        let credClass = 'cred-unknown';
-        if (cred.includes('官方') || cred.includes('备案')) {
-            icon = '🟢';
-            credClass = 'cred-official';
-        } else if (cred.includes('数据库') || cred.includes('专业')) {
-            icon = '🔵';
-            credClass = 'cred-database';
-        } else if (cred.includes('达人') || cred.includes('评测')) {
-            icon = '🟡';
-            credClass = 'cred-review';
-        }
-
         items += `
         <div class="source-item">
-            <span class="source-icon">${icon}</span>
-            <div class="source-info">
+            <div class="source-info" style="flex:1;">
                 <a href="${s.url}" target="_blank" class="source-title">${s.title || '未知来源'}</a>
-                <span class="source-cred ${credClass}">${cred}</span>
                 ${s.used_for ? `<span class="source-used">${s.used_for}</span>` : ''}
             </div>
         </div>`;
