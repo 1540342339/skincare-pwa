@@ -15,10 +15,14 @@ if not TAVILY_API_KEY:
 @tool
 def analyze_skincare(product_name: str, analysis_type: str = "safety",
                      pre_search_text: str = "", pre_search_sources: list = None) -> str:
+    """分析护肤品的成分安全性和配伍禁忌。product_name 为产品名称，analysis_type 可选 'safety'(安全性) 或 'conflict'(与另一产品的冲突检查)。
+    可选参数 pre_search_text 为已搜索到的成分文本，pre_search_sources 为已搜索到的信源列表。
+    """
     try:
         if pre_search_sources is None:
             pre_search_sources = []
 
+        # Step 1: 优先使用传入的搜索数据，否则自主搜索
         if pre_search_text:
             ingredient_text = pre_search_text
             sources = pre_search_sources
@@ -32,6 +36,7 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety",
                     "content_snippet": s.get('content', '')[:800]
                 })
         else:
+            # 多关键词尝试搜索
             search_queries = [
                 f"{product_name} 全成分表 备案",
                 f"{product_name} 成分表",
@@ -78,6 +83,7 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety",
             if not sources:
                 return f"❌ 未找到「{product_name}」的成分信息。请确认产品名称是否正确，或尝试搜索其英文名。"
 
+            # 提取成分文本
             ingredient_text = ""
             for s in sources:
                 content = s.get('content', '') if isinstance(s, dict) else getattr(s, 'content', '')
@@ -89,6 +95,8 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety",
                 ingredient_text = (s0.get('content', '') if isinstance(s0, dict) else getattr(s0, 'content', ''))[:2000]
 
             source_url = sources[0].get('url', '') if sources else ""
+
+            # 为 LLM 准备信源列表
             all_sources_for_llm = []
             for i, s in enumerate(sources):
                 all_sources_for_llm.append({
@@ -98,6 +106,7 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety",
                     "content_snippet": s.get('content', '')[:800]
                 })
 
+        # Step 2: 调用 LLM 进行深度分析
         analysis_prompt = f"""你是一位资深化妆品配方师。请根据以下信息分析产品「{product_name}」：
 
 成分信息来源：{source_url}
@@ -111,13 +120,13 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety",
 分析要求（请严格遵循）：
 1. 列出该产品的主要功效成分及其作用。
 2. 根据公开发表的成分安全性数据，标记出以下风险（如有）：
-   - 致痘风险成分
-   - 刺激性成分
-   - 孕妇慎用成分
-3. 分析配方骨架
-4. 如果产品采用包裹/缓释技术，请说明并据此下调风险等级
-5. 结合真实皮肤环境给出实际使用建议
-6. 在分析末尾附加一个「信源评价」小节，对每个搜索到的信源给出可信度评级（格式：序号. 来源名称 [可信度等级] - 简短评价）。可信度等级包括：【官方/备案】【成分数据库】【专业评测】【达人分享】【仅供参考】。
+   - 致痘风险成分（如：肉豆蔻酸异丙酯、月桂醇聚醚-4、棕榈酸异丙酯等）
+   - 刺激性成分（如：酒精/乙醇、香精、薄荷醇、高浓度酸类等）
+   - 孕妇慎用成分（如：维A酸、视黄醇、水杨酸等）
+3. 分析配方骨架：成分表前5位是否有较多硅油/增稠剂（可能为概念性添加）？
+4. 如果产品采用包裹/缓释技术，请说明并据此下调风险等级。
+5. 结合真实皮肤环境（pH缓冲、使用习惯）给出实际使用建议，避免纯理论化学反应推断。
+6. 在分析末尾，附加一个「信源评价」小节，对每个搜索到的信源给出可信度评级（格式：序号. 来源名称 [可信度等级] - 简短评价）。可信度等级包括：【官方/备案】【成分数据库】【专业评测】【达人分享】【仅供参考】。
 
 请用自然段落输出，不要使用表格或 Markdown 格式。"""
 
@@ -148,7 +157,10 @@ def analyze_skincare(product_name: str, analysis_type: str = "safety",
         ])
 
         final_analysis = analysis_result.content.strip()
-        output = f"## **{product_name}** 成分分析\n\n" + final_analysis
+
+        # Step 3: 组合输出
+        output = f"## **{product_name}** 成分分析\n\n"
+        output += final_analysis
         output += f"\n\n📎 成分来源：{source_url}"
         output += f"\n📎 全部信源数：{len(sources)} 条"
         return output
