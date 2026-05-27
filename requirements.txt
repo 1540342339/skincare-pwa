@@ -1,6 +1,7 @@
 flask>=3.0.0
 langchain-openai>=0.3.0
 langchain-tavily>=0.1.5
+langchain-community
 duckduckgo-search>=7.5.1
 python-dotenv>=1.0.0
 gunicorn>=22.0.0
